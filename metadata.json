@@ -1,0 +1,7 @@
+{
+  "name": "CivicIndia: The Civic Intelligence Hub",
+  "description": "An integrated platform empowering Indian citizens to report issues, access services, engage with local governance, and drive transparent, data-driven urban development.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

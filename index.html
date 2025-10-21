@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CivicIndia: The Civic Intelligence Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'dark-navy': '#050715',
+              'primary-dark': '#0A0E27',
+              'glow-blue': '#3B82F6',
+              'light-slate': '#94a3b8',
+              'civic-blue': {
+                '50': '#f0f8ff',
+                '100': '#e0f1ff',
+                '200': '#c4e5ff',
+                '300': '#9ad2ff',
+                '400': '#68b8ff',
+                '500': '#4299e1',
+                '600': '#2b7ecb',
+                '700': '#2366a5',
+                '800': '#1e5284',
+                '900': '#1c466e',
+                '950': '#132c49',
+              },
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0",
+    "@clerk/clerk-react": "https://aistudiocdn.com/@clerk/clerk-react@^5.2.7"
+  }
+}
+</script>
+</head>
+  <body class="bg-dark-navy font-sans">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
