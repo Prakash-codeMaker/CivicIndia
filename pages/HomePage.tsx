@@ -47,14 +47,31 @@ const HomePage: React.FC = () => {
               <p className="mt-6 max-w-2xl mx-auto text-lg text-light-slate">
                   Report issues, track progress, and collaborate with your community to build a better, more responsive city.
               </p>
-              <div className="mt-10 flex justify-center gap-x-6">
-                  <Link to="/report" className="bg-glow-blue text-white px-8 py-3 rounded-md text-base font-semibold hover:opacity-90 transition-opacity">
-                      Report an Issue
-                  </Link>
-                  <a href="#features" onClick={handleLearnMoreClick} className="text-white px-8 py-3 rounded-md text-base font-semibold ring-1 ring-inset ring-white/20 hover:ring-white/40 transition-shadow">
-                      Learn More
-                  </a>
-              </div>
+                                            <div className="mt-10 flex justify-center gap-x-6">
+                                        <Link to="/report" className="bg-glow-blue text-white px-8 py-3 rounded-md text-base font-semibold hover:opacity-90 transition-opacity">
+                                            Report an Issue
+                                        </Link>
++
+                                        <a href="#features" onClick={handleLearnMoreClick} className="text-white px-8 py-3 rounded-md text-base font-semibold ring-1 ring-inset ring-white/20 hover:ring-white/40 transition-shadow">
+                                            Learn More
+                                        </a>
++
+                                        {/* Temporary debug button - remove after reproduction */}
++
+                                        <button
+                                            id="debug-navigate-report"
+                                            onClick={() => {
+                                                // use a direct window.location.hash change to replicate Link behavior as well as programmatic navigate
+                                                // eslint-disable-next-line no-console
+                                                console.debug('[Debug] programmatic navigate -> /report');
+                                                window.location.hash = '/report';
+                                            }}
+                                            className="hidden"
+                                        >
+                                            Debug: Go to Report
+                                        </button>
++
+                                    </div>
           </div>
       </div>
       

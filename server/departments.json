@@ -1,0 +1,5 @@
+[
+  { "id": "roads", "name": "Roads & Infrastructure" },
+  { "id": "sanitation", "name": "Sanitation" },
+  { "id": "lighting", "name": "Street Lighting" }
+]

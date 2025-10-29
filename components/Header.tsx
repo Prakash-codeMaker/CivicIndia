@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import Link from '../routing/Link';
-import { UserButton } from '@clerk/clerk-react';
+import { UserButton, useUser } from '@clerk/clerk-react';
+import NotificationBell from './NotificationBell';
 
 const Header: React.FC = () => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const { user } = useUser();
 
     const closeMenu = () => setIsMenuOpen(false);
 
@@ -27,6 +29,7 @@ const Header: React.FC = () => {
 
                     <div className="flex items-center space-x-4">
                         <div className="hidden md:flex items-center space-x-4">
+                             {user && <NotificationBell userId={user.id} />}
                              <UserButton afterSignOutUrl="/" />
                         </div>
                         <div className="md:hidden">

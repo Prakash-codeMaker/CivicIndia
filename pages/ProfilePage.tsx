@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from '../routing/Link';
 import { useUser } from '@clerk/clerk-react';
+import { getReportsForUser, subscribe, ReportItem, deleteReport } from '../lib/reportStore';
+import ServiceHealth from '../components/ServiceHealth';
 
 const ProfilePage: React.FC = () => {
     const { user } = useUser();
@@ -13,7 +15,58 @@ const ProfilePage: React.FC = () => {
         );
     }
 
-    const activities = [
+    const [reports, setReports] = useState<ReportItem[]>([]);
+    const [displayName, setDisplayName] = useState(user.fullName || '');
+
+    useEffect(() => {
+        if (!user) return;
+        const load = async () => {
+            const res = await getReportsForUser(user.id);
+            setReports(res || []);
+        };
+        load();
+        const unsub = subscribe(() => {
+            load();
+        });
+        return unsub;
+    }, [user]);
+
+    useEffect(() => {
+        // load persisted display name override if any
+        try {
+            const v = localStorage.getItem('profile:displayName');
+            if (v) setDisplayName(v);
+        } catch (e) {}
+    }, []);
+
+    const handleSaveName = () => {
+        try {
+            localStorage.setItem('profile:displayName', displayName);
+            // optionally show a toast - for now just console
+            console.log('Display name saved');
+        } catch (e) {
+            console.error('Failed to save display name', e);
+        }
+    };
+
+    const handleDeleteReport = async (id: string) => {
+        if (!confirm('Delete this report? This action cannot be undone.')) return;
+        try {
+            await deleteReport(id);
+            // reload
+            const res = await getReportsForUser(user.id);
+            setReports(res || []);
+        } catch (e) {
+            console.error('Failed to delete report', e);
+            alert('Could not delete report.');
+        }
+    };
+
+    const activities = reports.length > 0 ? reports.map(r => ({
+        icon: 'megaphone',
+        text: `Reported: "${r.issueType}" — ${r.status}`,
+        time: new Date(r.createdAt).toLocaleString(),
+    })) : [
         { icon: 'megaphone', text: 'Reported an issue: "Broken streetlight on Elm St."', time: '2 hours ago' },
         { icon: 'chat', text: 'Commented on discussion: "New waste collection schedule"', time: '1 day ago' },
         { icon: 'check', text: 'Your report "Pothole on Main St." was resolved.', time: '3 days ago' },
@@ -57,6 +110,14 @@ const ProfilePage: React.FC = () => {
         'eye': <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
     };
 
+    const totalReports = reports.length;
+    const statusCounts: Record<string, number> = reports.reduce((acc, r) => {
+        acc[r.status] = (acc[r.status] || 0) + 1;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const impactScore = 1000 + (statusCounts['resolved'] || 0) * 100 + totalReports * 5;
+
     return (
         <div className="py-24 sm:py-32">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -64,9 +125,21 @@ const ProfilePage: React.FC = () => {
                 <div className="flex flex-col md:flex-row items-center gap-8 mb-16">
                     <img className="h-32 w-32 rounded-full object-cover border-4 border-glow-blue/50" src={user.imageUrl} alt={user.fullName || 'User avatar'} />
                     <div>
-                        <h1 className="text-4xl font-bold text-white text-center md:text-left">{user.fullName}</h1>
-                        <p className="text-lg text-light-slate text-center md:text-left mt-2">Civic Impact Score: <span className="font-bold text-glow-blue">1250</span></p>
+                        <h1 className="text-4xl font-bold text-white text-center md:text-left">{displayName || user.fullName}</h1>
+                        <p className="text-lg text-light-slate text-center md:text-left mt-2">Civic Impact Score: <span className="font-bold text-glow-blue">{impactScore}</span></p>
+                        <p className="text-sm text-light-slate mt-1">Reports: <span className="font-semibold text-white">{totalReports}</span> · Resolved: <span className="text-green-300">{statusCounts['resolved'] || 0}</span> · In-progress: <span className="text-yellow-300">{statusCounts['in-progress'] || 0}</span></p>
                     </div>
+                </div>
+
+                {/* Change display name */}
+                <div className="mb-8 max-w-3xl mx-auto p-4 bg-primary-dark/50 rounded-lg border border-white/10">
+                    <h3 className="text-lg font-semibold text-white mb-2">Account</h3>
+                    <label className="block text-sm text-gray-300">Display name</label>
+                    <div className="mt-2 flex gap-2">
+                        <input value={displayName} onChange={e=>setDisplayName(e.target.value)} className="flex-1 p-2 rounded bg-dark-navy text-white" />
+                        <button onClick={handleSaveName} className="px-3 py-2 bg-glow-blue rounded text-white">Save</button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Changing this name updates the display name locally for this browser.</p>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -124,16 +197,23 @@ const ProfilePage: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Right Column: Achievements */}
-                    <div>
-                        <h2 className="text-2xl font-bold text-white mb-6">Achievements</h2>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-4">
-                            {achievements.map((ach, index) => (
-                                <div key={index} className="flex flex-col items-center justify-center text-center p-4 bg-primary-dark/50 rounded-lg border border-white/10">
-                                    <div className="text-yellow-400 mb-2">{iconMap[ach.icon]}</div>
-                                    <p className="text-xs font-semibold text-light-slate">{ach.name}</p>
-                                </div>
-                            ))}
+                    {/* Right Column: Achievements & Service Health */}
+                    <div className="space-y-8">
+                        <div>
+                            <h2 className="text-2xl font-bold text-white mb-6">Achievements</h2>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-4">
+                                {achievements.map((ach, index) => (
+                                    <div key={index} className="flex flex-col items-center justify-center text-center p-4 bg-primary-dark/50 rounded-lg border border-white/10">
+                                        <div className="text-yellow-400 mb-2">{iconMap[ach.icon]}</div>
+                                        <p className="text-xs font-semibold text-light-slate">{ach.name}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Service Health Status */}
+                        <div>
+                            <ServiceHealth />
                         </div>
                     </div>
                 </div>

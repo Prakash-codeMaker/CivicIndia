@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-const mockComplaints = [
-    { id: 'CMPT-583921', title: 'Broken streetlight on Elm St.', status: 'In Progress', submitted: '2024-10-26', stages: [true, true, true, false] },
-    { id: 'CMPT-491204', title: 'Pothole on Main St.', status: 'Resolved', submitted: '2024-10-23', stages: [true, true, true, true] },
-    { id: 'CMPT-381045', title: 'Garbage not collected in Sector 12', status: 'Acknowledged', submitted: '2024-10-25', stages: [true, true, false, false] },
-];
+import { useUser } from '@clerk/clerk-react';
+import { getReportById, getReportsForUser, subscribe } from '../lib/reportStore';
 
 const StatusStep = ({ stage, isCompleted, isLast }: { stage: string, isCompleted: boolean, isLast: boolean }) => (
     <div className={`flex-grow flex items-center ${isLast ? 'flex-grow-0' : ''}`}>
@@ -47,24 +43,59 @@ const ComplaintCard = ({ id, title, status, submitted, stages }: { id: string, t
     );
 };
 
+const statusToStages = (status: string) => {
+    // Normalize status and create boolean array for the 4 steps
+    const s = (status || '').toLowerCase();
+    const stages = [false, false, false, false];
+    stages[0] = true; // Submitted is always true
+    if (s.includes('ack')) stages[1] = true;
+    if (s.includes('in') || s.includes('progress')) stages[2] = true;
+    if (s.includes('resolv') || s.includes('resolved')) stages[3] = true;
+    return stages;
+};
 
 const TrackPage: React.FC = () => {
-    const [newComplaintId, setNewComplaintId] = useState<string | null>(null);
+    const { user } = useUser();
+    const [trackedId, setTrackedId] = useState<string | null>(() => sessionStorage.getItem('newComplaintId'));
+    const [report, setReport] = useState<any | null>(null);
 
     useEffect(() => {
-        const status = sessionStorage.getItem('newComplaintStatus');
-        const id = sessionStorage.getItem('newComplaintId');
-        if (status === 'success' && id) {
-            setNewComplaintId(id);
-            sessionStorage.removeItem('newComplaintStatus');
-            sessionStorage.removeItem('newComplaintId');
+        let mounted = true;
 
-            const timer = setTimeout(() => {
-                setNewComplaintId(null);
-            }, 7000);
-            return () => clearTimeout(timer);
+        const loadById = async (id: string) => {
+            const r = await getReportById(id);
+            if (!mounted) return;
+            setReport(r);
+        };
+
+        const loadFallback = async () => {
+            if (!user) return;
+            const list = await getReportsForUser(user.id);
+            if (!mounted) return;
+            setReport(list && list.length ? list[0] : null);
+        };
+
+        if (trackedId) {
+            loadById(trackedId);
+            // clear one-time indicator
+            try { sessionStorage.removeItem('newComplaintId'); sessionStorage.removeItem('newComplaintStatus'); } catch (e) {}
+        } else {
+            // if no explicit ID, show latest user report (if logged in)
+            loadFallback();
         }
-    }, []);
+
+        const unsub = subscribe(() => {
+            if (trackedId) loadById(trackedId);
+            else loadFallback();
+        });
+
+        return () => { mounted = false; unsub(); };
+    }, [trackedId, user]);
+
+    const submittedAt = report ? new Date(report.createdAt).toLocaleDateString() : '';
+    const title = report ? (report.issueType || 'Reported Issue') : 'No reported issue found';
+    const status = report ? (report.status ? String(report.status) : 'Submitted') : 'Submitted';
+    const stages = report ? statusToStages(status) : [true, false, false, false];
 
     return (
         <div className="py-24 sm:py-32">
@@ -72,21 +103,25 @@ const TrackPage: React.FC = () => {
                 <div className="text-center">
                     <h1 className="text-4xl font-bold text-white">Track Your Complaints</h1>
                     <p className="mt-4 max-w-2xl mx-auto text-lg text-light-slate">
-                        View the real-time status of all your submitted issues and get detailed updates.
+                        View the real-time status of your submitted issue and get detailed updates.
                     </p>
                 </div>
 
-                {newComplaintId && (
+                {trackedId && (
                     <div className="mt-12 max-w-3xl mx-auto bg-green-500/10 border border-green-500/30 text-green-300 px-4 py-3 rounded-lg relative text-center" role="alert">
                         <strong className="font-bold">Success!</strong>
-                        <span className="block sm:inline ml-2">Your issue has been reported. Your Tracking ID is: {newComplaintId}</span>
+                        <span className="block sm:inline ml-2">Your issue has been reported. Your Tracking ID is: {trackedId}</span>
                     </div>
                 )}
-                
+
                 <div className="mt-16 max-w-3xl mx-auto space-y-6">
-                    {mockComplaints.map(complaint => (
-                        <ComplaintCard key={complaint.id} {...complaint} />
-                    ))}
+                    {report ? (
+                        <ComplaintCard id={report.id} title={title} status={status} submitted={submittedAt} stages={stages} />
+                    ) : (
+                        <div className="bg-primary-dark p-6 rounded-lg border border-white/10 text-center">
+                            <p className="text-light-slate">No complaint found. Submit a new report from the <strong>Report</strong> page to track it here.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

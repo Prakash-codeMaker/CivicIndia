@@ -15,14 +15,24 @@ const Link: React.FC<LinkProps> = ({ to, children, className, onClick, ...props 
     if (onClick) {
       onClick(event);
     }
-    
-    // The path passed to navigate should be clean (e.g. /report)
-    const path = to.startsWith('/') ? to : '/' + to;
-    navigate(path);
+
+    // Normalize `to`: remove any leading '#', ensure exactly one leading '/'
+    let raw = to || '/';
+    if (raw.startsWith('#')) raw = raw.slice(1);
+    if (!raw.startsWith('/')) raw = '/' + raw;
+
+    // Debug navigation intents
+    // eslint-disable-next-line no-console
+    console.debug('[Link] clicked', { original: to, normalized: raw });
+
+    navigate(raw);
   };
 
-  // The href for the browser should be a full hash-based URL
-  const href = `#${to.startsWith('/') ? to : '/' + to}`;
+  // Build href from normalized `to` so the browser shows a consistent hash-based URL
+  let href = to || '/';
+  if (href.startsWith('#')) href = href.slice(1);
+  if (!href.startsWith('/')) href = '/' + href;
+  href = `#${href}`;
 
   return (
     <a href={href} onClick={handleClick} className={className} {...props}>

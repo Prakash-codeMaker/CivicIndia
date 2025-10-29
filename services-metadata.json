@@ -1,0 +1,138 @@
+{
+  "services": {
+    "housing": {
+      "title": "Housing & Property",
+      "description": "Support for housing schemes, new home allotments, property tax, building permits and property registration.",
+      "steps": [
+        "Open Services → Housing",
+        "Apply to housing schemes (e.g. PMAY) and complete eligibility assessment",
+        "Submit online application and upload required documents (ID, income proof, residence proof, photos)",
+        "Pay any applicable fees or link bank details for subsidies",
+        "Apply for property tax payments and view receipts",
+        "Request building permits, approvals and occupancy certificates when required",
+        "Register property or book appointment for e-registration",
+        "Track all housing-related applications via Profile → Applications or the Unified Application Tracker",
+        "Escalate grievances for delayed applications"
+      ],
+      "sections": {
+        "schemes": {
+          "title": "Housing Schemes Applications",
+          "portal": "PM Awas Yojana (PMAY) Portal",
+          "portalUrl": "https://pmaymis.gov.in/",
+          "tasks": [
+            "Eligibility assessment for urban and rural housing schemes",
+            "Online application submission with document upload",
+            "Application status tracking from submission to house allotment",
+            "Beneficiary list verification",
+            "Subsidy status tracking and disbursement updates"
+          ]
+        },
+        "propertyTax": {
+          "title": "Property Tax Services",
+          "tasks": [
+            "Online Tax Payment System",
+            "Property tax calculation based on municipal rates",
+            "Digital payment via UPI, net banking, or cards",
+            "Tax receipt download and history",
+            "Property tax assessment requests",
+            "Tax exemption applications for senior citizens/disabled"
+          ]
+        },
+        "permits": {
+          "title": "Building Permits & Approvals",
+          "tasks": [
+            "Online Building Plan Approval",
+            "Submit construction plans for approval",
+            "Track approval status with different departments",
+            "Building completion certificate applications",
+            "Occupancy certificate requests",
+            "No Objection Certificate (NOC) applications"
+          ]
+        },
+        "registration": {
+          "title": "Property Registration",
+          "tasks": [
+            "E-Registration Services",
+            "Appointment booking for property registration",
+            "Stamp duty and registration fee calculation",
+            "Document verification status",
+            "Encumbrance certificate applications",
+            "Property mutation requests"
+          ]
+        },
+        "tracking": {
+          "title": "Application Tracking",
+          "tasks": [
+            "Unified Application Tracker",
+            "Real-time status of all housing-related applications",
+            "Department-wise approval status",
+            "Estimated timeline for completion",
+            "Grievance escalation for delayed applications"
+          ]
+        }
+      }
+    },
+
+    "utilities": {
+      "title": "Utilities (Water / Electricity / Gas)",
+      "description": "Apply for new connections, manage billing and report outages or meter issues.",
+      "steps": [
+        "Open Services → Utilities",
+        "Select the service: New connection / Bill payment / Complaint",
+        "For new connections, fill property details and upload ownership/residence proof",
+        "For billing issues, provide meter number and attach a photo of the bill",
+        "Submit and note the reference number; use it to follow up via Profile → Applications or Track page"
+      ]
+    },
+
+    "health": {
+      "title": "Health Services",
+      "description": "Locate government health facilities, book appointments and access schemes like Ayushman Bharat.",
+      "hasApply": true,
+      "steps": [
+        "Open Services → Health",
+        "Use the facility locator to find nearby government health centers or hospitals",
+        "Select service: appointment booking, scheme registration, or medical records",
+        "Provide patient details and upload any required documents",
+        "Confirm booking/submission and save the reference ID for tracking"
+      ]
+    },
+
+    "education": {
+      "title": "Education",
+      "description": "Apply for school admissions, scholarships and access learning resources provided by government portals.",
+      "steps": [
+        "Open Services → Education",
+        "Choose: Admissions / Scholarships / Learning Resources",
+        "For admissions, fill student and guardian details and upload required certificates",
+        "For scholarships, check eligibility, fill the application and upload proofs",
+        "Submit and note application ID; track status via Profile → Applications"
+      ]
+    },
+
+    "employment": {
+      "title": "Employment & Training",
+      "description": "Find government job listings, apply for training programs and register for employment exchanges.",
+      "steps": [
+        "Open Services → Employment",
+        "Browse jobs or training programs and check eligibility requirements",
+        "Register or sign-in to the relevant portal (e.g. Skill India, state employment exchange)",
+        "Upload resume and supporting documents where required",
+        "Submit application and save reference/application IDs to track progress"
+      ]
+    },
+
+    "financial-assistance": {
+      "title": "Financial Assistance",
+      "description": "Apply for pensions, subsidies, direct benefit transfers and other government aid programs.",
+      "hasApply": true,
+      "steps": [
+        "Open Services → Financial Assistance",
+        "Select the specific scheme to apply for and read eligibility criteria",
+        "Gather required documents (ID, income certificate, bank details)",
+        "Complete and submit the online application",
+        "Note the application ID and monitor beneficiary/payment status under Profile"
+      ]
+    }
+  }
+}

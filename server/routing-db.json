@@ -1,0 +1,17 @@
+[
+	{
+		"id": "RPT-1001",
+		"department": "roads",
+		"assignedAt": "2025-10-20T08:00:00.000Z",
+		"due": "2025-10-27T08:00:00.000Z",
+		"status": "assigned"
+	},
+	{
+		"id": "RPT-1000",
+		"department": "sanitation",
+		"assignedAt": "2025-10-15T09:30:00.000Z",
+		"due": "2025-10-22T09:30:00.000Z",
+		"status": "resolved",
+		"resolvedAt": "2025-10-18T12:00:00.000Z"
+	}
+]

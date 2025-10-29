@@ -45,6 +45,10 @@ const AuthPage: React.FC = () => {
                             Sign up with Email
                         </button>
                     </SignUpButton>
+                    
+                    <div className="mt-4 text-xs text-yellow-200">
+                        Note: Phone/SMS-based verification via Clerk is not currently supported for India. Please use Email or Google sign-in to create an account.
+                    </div>
                 </div>
                  <p className="mt-8 text-xs text-gray-500">
                     By continuing, you agree to our Terms of Service and Privacy Policy.

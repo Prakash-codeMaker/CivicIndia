@@ -1,15 +1,28 @@
 import React, { useState } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { useRouter } from '../routing/RouterContext';
+import { useUser } from '@clerk/clerk-react';
+import { addReport } from '../lib/reportStore';
+import imageVerification, { readExif, computeELA, averageHash, hammingDistance } from '../lib/imageVerification';
+// AiIssueBot removed from report form UI per design decision
 
 const getAiClient = () => {
-    const apiKey = (typeof process !== 'undefined' && process.env?.API_KEY) || undefined;
-    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY') { // Also check for placeholder
-        console.error("Gemini API key not configured.");
-        return null;
-    }
+  // Prefer Vite-style env var VITE_GEMINI_API_KEY in the browser, fallback to process.env for SSR
+  const viteKey = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_GEMINI_API_KEY) || undefined;
+  const procKey = (typeof process !== 'undefined' && (process as any).env && (process as any).env.API_KEY) || undefined;
+  const apiKey = viteKey || procKey;
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY') {
+    // eslint-disable-next-line no-console
+    console.warn('Gemini API key not configured. Set VITE_GEMINI_API_KEY in your .env to enable AI image verification.');
+    return null;
+  }
+  try {
     return new GoogleGenAI({ apiKey });
-}
+  } catch (err) {
+    console.error('Failed to initialize AI client', err);
+    return null;
+  }
+};
 
 const issueTypes = [
   'Water Issues',
@@ -55,27 +68,127 @@ const ReportIssue: React.FC = () => {
   const [imageVerificationFeedback, setImageVerificationFeedback] = useState('');
   const [isConfirming, setIsConfirming] = useState(false); // State for confirmation dialog
   const { navigate } = useRouter();
+  const { user } = useUser();
+  // Load draft from sessionStorage if present (set by AiIssueBot draft helper)
+  React.useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('report:draft');
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.issueType) setIssueType(draft.issueType);
+        if (draft.location) setLocation(draft.location);
+        if (draft.description) setDescription(draft.description);
+        if (draft.photos && Array.isArray(draft.photos)) {
+          // draft.photos are expected to be data URLs
+          setPhotoPreviews(prev => [...prev, ...draft.photos]);
+          // We cannot convert data URLs back to File easily here; store previews and let user reattach if needed
+        }
+        sessionStorage.removeItem('report:draft');
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
 
 
   const processImagesWithAI = async (imageFiles: File[]) => {
-      if (imageFiles.length === 0) return;
-      
-      const ai = getAiClient();
-      if (!ai) {
-          console.warn("AI client not available, skipping AI processing.");
-          setImageVerificationStatus('idle');
-          setImageVerificationFeedback('AI features are not configured.');
-          return;
+    if (!imageFiles || imageFiles.length === 0) return;
+
+    const ai = getAiClient();
+    if (!ai) {
+      console.warn('AI client not available, skipping AI processing.');
+      setImageVerificationStatus('idle');
+      setImageVerificationFeedback('AI features are not configured. To enable image verification provide VITE_GEMINI_API_KEY.');
+      return;
+    }
+
+    setIsProcessingAI(true);
+    setImageVerificationStatus('verifying');
+    setImageVerificationFeedback('');
+    setSuggestedTags([]);
+
+    // Quick client-side pre-checks: type & size
+    for (const f of imageFiles) {
+      if (!f.type.startsWith('image/')) {
+        setImageVerificationStatus('rejected');
+        setImageVerificationFeedback('One of the files is not an image. Please upload PNG/JPG/GIF.');
+        setIsProcessingAI(false);
+        return;
+      }
+      if (f.size > 12 * 1024 * 1024) {
+        setImageVerificationStatus('rejected');
+        setImageVerificationFeedback('One of the images is too large (max 12MB).');
+        setIsProcessingAI(false);
+        return;
+      }
+    }
+
+    try {
+      // Try server-side verification first
+      let serverResults = null;
+      try {
+        const form = new FormData();
+        for (const f of imageFiles) form.append('photos', f);
+        form.append('reportedLocation', location || '');
+        const resp = await fetch('/verify', { method: 'POST', body: form });
+        if (resp.ok) serverResults = await resp.json();
+      } catch (e) {
+        // server not available, continue with local checks
       }
 
-      setIsProcessingAI(true);
-      setImageVerificationStatus('verifying');
-      setImageVerificationFeedback('');
-      setSuggestedTags([]);
+      if (serverResults && Array.isArray(serverResults.results)) {
+        // interpret detailed per-file checks
+        for (const r of serverResults.results) {
+          if (!r.ok) {
+            // build a helpful message from checks
+            const failingChecks = (r.checks || []).filter((c: any) => !c.ok).map((c: any) => c.name).join(', ');
+            const reason = r.reason || 'failed';
+            setImageVerificationStatus('rejected');
+            setImageVerificationFeedback(`Server verification failed: ${reason}${failingChecks ? ' (' + failingChecks + ')' : ''}`);
+            return;
+          }
+        }
+      } else {
+        // Local fallback: EXIF recency, duplicate aHash, and ELA
+        const exifResults = await Promise.all(imageFiles.map(f => readExif(f)));
+        const now = Date.now();
+        for (const exif of exifResults) {
+          const d = (exif as any)?.DateTimeOriginal;
+          if (d) {
+            const dt = new Date(d).getTime();
+            if (isFinite(dt) && Math.abs(now - dt) > 24 * 3600 * 1000) {
+              setImageVerificationStatus('rejected');
+              setImageVerificationFeedback('Photo appears older than 24 hours.');
+              return;
+            }
+          }
+        }
 
-      try {
-          const imageParts = await Promise.all(imageFiles.map(fileToGenerativePart));
-          const prompt = `
+        const hashes = await Promise.all(imageFiles.map(f => averageHash(f)));
+        const db = JSON.parse(localStorage.getItem('image-hash-db') || '[]');
+        for (const h of hashes) {
+          for (const existing of db) {
+            if (hammingDistance(h, existing) <= 5) {
+              setImageVerificationStatus('rejected');
+              setImageVerificationFeedback('This image appears to be a duplicate of an earlier submission.');
+              return;
+            }
+          }
+        }
+
+        const elas = await Promise.all(imageFiles.map(f => computeELA(f)));
+        for (const ela of elas) {
+          if (ela && ela.avgDiff && ela.avgDiff > 35) {
+            setImageVerificationStatus('rejected');
+            setImageVerificationFeedback('Image ELA indicates possible manipulation.');
+            return;
+          }
+        }
+      }
+
+      // AI-based verification
+      const imageParts = await Promise.all(imageFiles.map(fileToGenerativePart));
+      const prompt = `
             Analyze the following image(s) of a potential civic issue.
             1. Verify if the image appears to be a genuine photograph of a real-world scene and depicts a legitimate civic issue (e.g., pothole, garbage, broken infrastructure, etc.). It should not be a meme, cartoon, screenshot of a game, or irrelevant photo.
             2. Identify the main subjects and provide 3-5 relevant one-word or two-word tags.
@@ -88,43 +201,52 @@ const ReportIssue: React.FC = () => {
             }
           `;
 
-          const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
-              contents: { parts: [...imageParts, { text: prompt }] },
-          });
-          
-          let aiResponse;
-          try {
-              const jsonString = response.text.replace(/```json\n|```/g, '').trim();
-              aiResponse = JSON.parse(jsonString);
-          } catch (e) {
-              console.error("Failed to parse AI JSON response:", response.text, e);
-              throw new Error("AI response was not valid JSON.");
-          }
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: { parts: [...imageParts, { text: prompt }] },
+      });
 
-          if (aiResponse.is_verified) {
-              setImageVerificationStatus('verified');
-              setImageVerificationFeedback(aiResponse.reason || 'Image looks legitimate.');
-          } else {
-              setImageVerificationStatus('rejected');
-              setImageVerificationFeedback(aiResponse.reason || 'Image does not seem to be a valid civic issue.');
-          }
-
-          const tags = aiResponse.tags || [];
-          setSuggestedTags(prev => [...new Set([...prev, ...tags])]);
-
-      } catch (error) {
-          console.error("Error processing images with AI:", error);
-          setImageVerificationStatus('rejected');
-          setImageVerificationFeedback('Could not verify the image. Please try another one.');
-      } finally {
-          setIsProcessingAI(false);
+      let aiResponse: any = null;
+      try {
+        const jsonString = response.text.replace(/```json\n|```/g, '').trim();
+        aiResponse = JSON.parse(jsonString);
+      } catch (e) {
+        console.error('Failed to parse AI JSON response:', response.text, e);
+        throw new Error('AI response was not valid JSON.');
       }
+
+      if (aiResponse?.is_verified) {
+        setImageVerificationStatus('verified');
+        setImageVerificationFeedback(aiResponse.reason || 'Image looks legitimate.');
+      } else {
+        setImageVerificationStatus('rejected');
+        setImageVerificationFeedback(aiResponse?.reason || 'Image does not seem to be a valid civic issue.');
+      }
+
+      const tags = aiResponse?.tags || [];
+      setSuggestedTags(prev => [...new Set([...prev, ...tags])]);
+
+      // Save local hashes
+      try {
+        const newHashes = await Promise.all(imageFiles.map(f => averageHash(f)));
+        const dbLocal = JSON.parse(localStorage.getItem('image-hash-db') || '[]');
+        const merged = [...dbLocal, ...newHashes];
+        localStorage.setItem('image-hash-db', JSON.stringify(merged.slice(-500)));
+      } catch (e) {
+        // ignore
+      }
+    } catch (error) {
+      console.error('Error processing images with AI:', error);
+      setImageVerificationStatus('rejected');
+      setImageVerificationFeedback('Could not verify the image. Please try another one.');
+    } finally {
+      setIsProcessingAI(false);
+    }
   };
 
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
+    const files = Array.from(event.target.files || []) as File[];
     if (files.length > 0) {
       const newPhotos = [...photos, ...files];
       setPhotos(newPhotos);
@@ -237,17 +359,46 @@ const ReportIssue: React.FC = () => {
   };
   
   const handleConfirmSubmit = () => {
-    setIsConfirming(false);
-    setIsSubmitting(true);
-    const newComplaintId = `CMPT-${Date.now().toString().slice(-6)}`;
-    console.log('Submitting:', { issueType, location, description, photos, tags: Array.from(selectedTags), id: newComplaintId });
-    // Simulate API call
-    setTimeout(() => {
+    (async () => {
+      setIsConfirming(false);
+      setIsSubmitting(true);
+
+      try {
+        // Convert photos (File[]) to data URLs
+        const filesToDataUrls = (files: File[]) => Promise.all(files.map(file => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string) || '');
+          reader.onerror = (e) => reject(e);
+          reader.readAsDataURL(file);
+        })));
+
+        const photosDataUrls = await filesToDataUrls(photos);
+
+  // determine user id (if using Clerk)
+  const userId = user?.id || 'guest';
+
+        const item = await addReport({
+          userId,
+          issueType,
+          location,
+          description,
+          photos: photosDataUrls,
+          status: 'submitted',
+        });
+
+        // keep existing TrackPage compatibility which reads sessionStorage
         sessionStorage.setItem('newComplaintStatus', 'success');
-        sessionStorage.setItem('newComplaintId', newComplaintId);
+        sessionStorage.setItem('newComplaintId', item.id);
+
+        console.log('Report stored locally:', item);
+      } catch (err) {
+        console.error('Failed to store report:', err);
+        sessionStorage.setItem('newComplaintStatus', 'failed');
+      } finally {
         setIsSubmitting(false);
         navigate('/track'); // Navigate to track page
-    }, 1500);
+      }
+    })();
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -320,8 +471,10 @@ const ReportIssue: React.FC = () => {
     <>
       {isConfirming && <ConfirmationDialog />}
       <div className="bg-primary-dark/50 rounded-lg border border-white/10 shadow-2xl p-8 backdrop-blur-sm">
-        <form onSubmit={handleSubmit} noValidate>
-          <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-3">
+            <form onSubmit={handleSubmit} noValidate>
+              <div className="space-y-6">
             {/* Issue Type */}
             <div>
               <label htmlFor="issue-type" className="block text-sm font-medium text-gray-300">
@@ -401,6 +554,10 @@ const ReportIssue: React.FC = () => {
                <label className="block text-sm font-medium text-gray-300">
                 Upload Photos
               </label>
+                       {/* Show whether AI-based verification is available */}
+                       {(!getAiClient()) && (
+                         <div className="mt-2 p-2 rounded-md text-xs bg-yellow-500/10 text-yellow-300 border border-yellow-500/20">AI image verification is not configured. Uploads will still be accepted but may not be auto-verified.</div>
+                       )}
               {photoPreviews.length > 0 && (
                   <div className="mt-2 grid grid-cols-3 gap-4">
                       {photoPreviews.map((preview, index) => (
@@ -501,24 +658,27 @@ const ReportIssue: React.FC = () => {
               </div>
             )}
 
+              </div>
+              <div className="mt-8">
+                  <button
+                      type="submit"
+                      disabled={isSubmitting || isProcessingAI || isSuggestingType || imageVerificationStatus === 'rejected'}
+                      className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-glow-blue hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-navy focus:ring-glow-blue disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  >
+                      {isSubmitting 
+                          ? 'Submitting...' 
+                          : isSuggestingType 
+                          ? 'Suggesting Category...' 
+                          : isProcessingAI
+                          ? 'Processing Image...'
+                          : 'Submit Report'}
+                  </button>
+              </div>
+            </form>
           </div>
 
-          <div className="mt-8">
-              <button
-                  type="submit"
-                  disabled={isSubmitting || isProcessingAI || isSuggestingType || imageVerificationStatus === 'rejected'}
-                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-glow-blue hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-navy focus:ring-glow-blue disabled:bg-gray-600 disabled:cursor-not-allowed"
-              >
-                  {isSubmitting 
-                      ? 'Submitting...' 
-                      : isSuggestingType 
-                      ? 'Suggesting Category...' 
-                      : isProcessingAI
-                      ? 'Processing Image...'
-                      : 'Submit Report'}
-              </button>
-          </div>
-        </form>
+          {/* Right column AI assistant removed */}
+        </div>
       </div>
     </>
   );
